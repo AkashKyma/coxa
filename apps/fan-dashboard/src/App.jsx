@@ -28,6 +28,13 @@ import NewsPage from "./pages/NewsPage.jsx";
 import PlayersPage from "./pages/PlayersPage.jsx";
 import PredictionsPage from "./pages/PredictionsPage.jsx";
 import PollsPage from "./pages/PollsPage.jsx";
+import VideosPage from "./pages/VideosPage.jsx";
+import VotesPage from "./pages/VotesPage.jsx";
+import FriendsPage from "./pages/FriendsPage.jsx";
+import SupportPage from "./pages/SupportPage.jsx";
+import HelpPage from "./pages/HelpPage.jsx";
+import FaqPage from "./pages/FaqPage.jsx";
+import LanguagePage from "./pages/LanguagePage.jsx";
 import { analytics } from "@coxa/analytics";
 
 const PAGE_NAMES = {
@@ -51,8 +58,15 @@ const PAGE_NAMES = {
   "/matches": "Jogos",
   "/news": "Notícias",
   "/players": "Elenco",
+  "/videos": "Vídeos",
   "/predictions": "Palpites",
-  "/polls": "Votações",
+  "/polls": "Enquetes",
+  "/votes": "Votações",
+  "/friends": "Amigos",
+  "/support": "Suporte",
+  "/help": "Ajuda",
+  "/faq": "FAQ",
+  "/language": "Idioma",
 };
 
 /**
@@ -120,8 +134,15 @@ export default function App() {
               <Route path="news" element={<NewsPage />} />
               <Route path="news/:id" element={<NewsPage />} />
               <Route path="players" element={<PlayersPage />} />
+              <Route path="videos" element={<VideosPage />} />
               <Route path="predictions" element={<PredictionsPage />} />
               <Route path="polls" element={<PollsPage />} />
+              <Route path="votes" element={<VotesPage />} />
+              <Route path="friends" element={<FriendsPage />} />
+              <Route path="support" element={<SupportPage />} />
+              <Route path="help" element={<HelpPage />} />
+              <Route path="faq" element={<FaqPage />} />
+              <Route path="language" element={<LanguagePage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>
           </Routes>
