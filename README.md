@@ -1,4 +1,4 @@
-# coxa-1touch
+# coxa
 
 ## Zero-Human Multi-Agent Platform
 
