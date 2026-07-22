@@ -1,0 +1,469 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Coxa CDP Infrastructure — Phase 1 + Phase 2
+# RudderStack · PostHog · ClickHouse · Cube · Dagster
+# Usage: docker compose -f docker-compose.cdp.yml up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ══════════════════════════════════════════════════════════════════════════
+  # RUDDERSTACK — Event streaming CDP
+  # ══════════════════════════════════════════════════════════════════════════
+
+  rudderstack-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: rudder
+      POSTGRES_PASSWORD: ${RUDDERSTACK_DB_PASSWORD:-rudder_dev_password}
+      POSTGRES_DB: jobsdb
+    volumes:
+      - rudderstack_pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rudder -d jobsdb"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  rudderstack-transformer:
+    image: rudderstack/rudder-transformer:latest
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rudderstack:
+    image: rudderlabs/rudder-server:latest
+    depends_on:
+      rudderstack-db:
+        condition: service_healthy
+      rudderstack-transformer:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      JOBS_DB_HOST: rudderstack-db
+      JOBS_DB_PORT: 5432
+      JOBS_DB_USER: rudder
+      JOBS_DB_PASSWORD: ${RUDDERSTACK_DB_PASSWORD:-rudder_dev_password}
+      JOBS_DB_DB_NAME: jobsdb
+      DEST_TRANSFORM_URL: http://rudderstack-transformer:9090
+      CONFIG_BACKEND_URL: https://api.rudderstack.com
+      WORKSPACE_TOKEN: ${RUDDERSTACK_WORKSPACE_TOKEN}
+      RSERVER_BACKEND_CONFIG_CONFIG_FROM_FILE: "true"
+      RSERVER_BACKEND_CONFIG_CONFIG_JSONPATH: /etc/rudderstack/workspaceConfig.json
+    volumes:
+      - ./infrastructure/rudderstack/workspaceConfig.json:/etc/rudderstack/workspaceConfig.json:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # POSTHOG — Product analytics, session replay, A/B testing
+  # ══════════════════════════════════════════════════════════════════════════
+
+  posthog-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  posthog-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: posthog
+      POSTGRES_PASSWORD: ${POSTHOG_DB_PASSWORD:-posthog_dev_password}
+      POSTGRES_DB: posthog
+    volumes:
+      - posthog_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U posthog -d posthog"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  posthog-clickhouse:
+    image: clickhouse/clickhouse-server:26.3.10.60
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: 1
+      KAFKA_HOSTS: posthog-kafka:9092
+    volumes:
+      - posthog_chdata:/var/lib/clickhouse
+      - ./infrastructure/clickhouse/clusters.xml:/etc/clickhouse-server/config.d/clusters.xml:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  posthog-kafka:
+    image: docker.io/redpandadata/redpanda:v25.1.9
+    command:
+      - redpanda
+      - start
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://posthog-kafka:9092,external://localhost:19092
+      - --pandaproxy-addr
+      - internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr
+      - internal://posthog-kafka:8082,external://localhost:18082
+      - --schema-registry-addr
+      - internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr
+      - posthog-kafka:33145
+      - --advertise-rpc-addr
+      - posthog-kafka:33145
+      - --mode
+      - dev-container
+      - --smp
+      - "1"
+      - --memory
+      - 768M
+      - --reserve-memory
+      - 0M
+      - --overprovisioned
+      - --set
+      - redpanda.empty_seed_starts_cluster=false
+      - --seeds
+      - posthog-kafka:33145
+      - --set
+      - redpanda.auto_create_topics_enabled=true
+    environment:
+      ALLOW_PLAINTEXT_LISTENER: "true"
+    volumes:
+      - posthog_kafka_data:/var/lib/redpanda/data
+    networks:
+      default:
+        aliases:
+          - kafka
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9644/v1/status/ready >/dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+
+  posthog-kafka-init:
+    image: docker.io/redpandadata/redpanda:v25.1.9
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        set -eu
+        until rpk topic list --brokers posthog-kafka:9092 >/dev/null 2>&1; do
+          sleep 2
+        done
+        for topic in \
+          events_plugin_ingestion \
+          events_plugin_ingestion_historical \
+          events_plugin_ingestion_dlq \
+          events_plugin_ingestion_overflow \
+          events_plugin_ingestion_async \
+          ingestion-clientwarnings-main-1 \
+          ingestion-errortracking-main \
+          heatmaps_ingestion \
+          clickhouse_events_json \
+          clickhouse_ai_events_json \
+          clickhouse_heatmap_events \
+          clickhouse_ingestion_warnings \
+          clickhouse_groups \
+          clickhouse_person \
+          clickhouse_person_distinct_id \
+          clickhouse_app_metrics2 \
+          log_entries \
+          clickhouse_tophog; do
+          rpk topic create "$$topic" --brokers posthog-kafka:9092 -p 1 -r 1 2>/dev/null || true
+        done
+        rpk topic list --brokers posthog-kafka:9092
+    depends_on:
+      posthog-kafka:
+        condition: service_healthy
+
+  posthog:
+    image: posthog/posthog:latest
+    command: ["bash", "-c", "./bin/docker-worker-celery --with-scheduler & ./bin/docker-server"]
+    depends_on:
+      posthog-redis:
+        condition: service_healthy
+      posthog-db:
+        condition: service_healthy
+      posthog-clickhouse:
+        condition: service_healthy
+      posthog-kafka-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://posthog:${POSTHOG_DB_PASSWORD:-posthog_dev_password}@posthog-db:5432/posthog
+      REDIS_URL: redis://posthog-redis:6379
+      CLICKHOUSE_HOST: posthog-clickhouse
+      CLICKHOUSE_DATABASE: default
+      CLICKHOUSE_SECURE: "false"
+      CLICKHOUSE_PORT: 9000
+      CLICKHOUSE_CLUSTER: default
+      KAFKA_HOSTS: posthog-kafka:9092
+      SECRET_KEY: ${POSTHOG_SECRET_KEY:-coxa-posthog-dev-secret-change-in-prod}
+      SITE_URL: ${POSTHOG_SITE_URL:-https://posthog.service.coxa.live}
+      IS_BEHIND_PROXY: "true"
+      DISABLE_SECURE_SSL_REDIRECT: "true"
+      # Allow sessions to work over plain HTTP (no HTTPS required)
+      SECURE_COOKIES: "0"
+      # Accept requests from configured host (default: all, fine with Caddy TLS termination)
+      DJANGO_ALLOWED_HOSTS: ${POSTHOG_ALLOWED_HOSTS:-*}
+      ENCRYPTION_SALT_KEYS: ${POSTHOG_ENCRYPTION_SALT_KEYS:-00beef0000beef0000beef0000beef00}
+      POSTHOG_SKIP_MIGRATION_CHECKS: "true"
+      NGINX_UNIT_APP_PROCESSES: 1
+      NGINX_UNIT_PRELOAD_CONFIG: "true"
+      PATH: /python-runtime/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      PYTHONPATH: /python-runtime
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/_health"]
+      interval: 15s
+      timeout: 30s
+      retries: 20
+
+  posthog-capture:
+    image: ghcr.io/posthog/posthog/capture:master
+    depends_on:
+      posthog-kafka:
+        condition: service_healthy
+      posthog-redis:
+        condition: service_healthy
+    environment:
+      ADDRESS: 0.0.0.0:3000
+      KAFKA_HOSTS: posthog-kafka:9092
+      KAFKA_TOPIC: events_plugin_ingestion
+      REDIS_URL: redis://posthog-redis:6379/
+      CAPTURE_MODE: events
+      RUST_LOG: info,rdkafka=warn
+      CAPTURE_V1_SINKS: msk
+      CAPTURE_V1_SINK_MSK_KAFKA_HOSTS: posthog-kafka:9092
+      CAPTURE_V1_SINK_MSK_KAFKA_TOPIC_MAIN: events_plugin_ingestion
+      CAPTURE_V1_SINK_MSK_KAFKA_TOPIC_HISTORICAL: events_plugin_ingestion_historical
+      CAPTURE_V1_SINK_MSK_KAFKA_TOPIC_OVERFLOW: events_plugin_ingestion_overflow
+      CAPTURE_V1_SINK_MSK_KAFKA_TOPIC_DLQ: events_plugin_ingestion_dlq
+      CAPTURE_V1_SINK_MSK_KAFKA_TOPIC_EXCEPTION: ingestion-errortracking-main
+      CAPTURE_V1_SINK_MSK_KAFKA_TOPIC_HEATMAP: heatmaps_ingestion
+      CAPTURE_V1_SINK_MSK_KAFKA_TOPIC_CLIENT_INGESTION_WARNING: ingestion-clientwarnings-main-1
+    restart: unless-stopped
+
+  posthog-ingestion:
+    image: posthog/posthog-node:latest
+    command: node nodejs/dist/index.js
+    depends_on:
+      posthog-db:
+        condition: service_healthy
+      posthog-redis:
+        condition: service_healthy
+      posthog-clickhouse:
+        condition: service_healthy
+      posthog-kafka-init:
+        condition: service_completed_successfully
+    environment:
+      PLUGIN_SERVER_MODE: ingestion-v2-combined
+      DATABASE_URL: postgres://posthog:${POSTHOG_DB_PASSWORD:-posthog_dev_password}@posthog-db:5432/posthog
+      PERSONS_DATABASE_URL: postgres://posthog:${POSTHOG_DB_PASSWORD:-posthog_dev_password}@posthog-db:5432/posthog
+      BEHAVIORAL_COHORTS_DATABASE_URL: postgres://posthog:${POSTHOG_DB_PASSWORD:-posthog_dev_password}@posthog-db:5432/posthog
+      KAFKA_HOSTS: posthog-kafka:9092
+      REDIS_URL: redis://posthog-redis:6379/
+      CLICKHOUSE_HOST: posthog-clickhouse
+      CLICKHOUSE_DATABASE: default
+      CLICKHOUSE_SECURE: "false"
+      CLICKHOUSE_VERIFY: "false"
+      COOKIELESS_REDIS_HOST: posthog-redis
+      COOKIELESS_REDIS_PORT: 6379
+      CDP_REDIS_HOST: posthog-redis
+      ENCRYPTION_SALT_KEYS: ${POSTHOG_ENCRYPTION_SALT_KEYS:-00beef0000beef0000beef0000beef00}
+    restart: unless-stopped
+
+  posthog-proxy:
+    image: caddy:2-alpine
+    depends_on:
+      posthog:
+        condition: service_healthy
+      posthog-capture:
+        condition: service_started
+    ports:
+      - "80:80"    # ACME HTTP-01 challenge + HTTP→HTTPS redirect
+      - "443:443"  # HTTPS (Let's Encrypt auto-cert)
+    volumes:
+      - caddy_data:/data       # persists Let's Encrypt certs across container restarts
+      - caddy_config:/config
+    networks:
+      - default
+      - coxa_services           # shared with docker-compose.tracardi.yml so Caddy can reach tracardi-* containers
+    environment:
+      CADDYFILE: |
+        posthog.service.coxa.live {
+          @capture {
+            path /e /e/ /e/* /i/v0 /i/v0/ /i/v0/* /i/v1/analytics/events /i/v1/analytics/events/ /batch /batch/ /batch/* /capture /capture/ /capture/*
+          }
+          handle @capture {
+            reverse_proxy posthog-capture:3000
+          }
+          handle {
+            reverse_proxy posthog:8000
+          }
+        }
+
+        tracardi.service.coxa.live {
+          reverse_proxy tracardi-gui:80
+        }
+
+        tracardi-api.service.coxa.live {
+          reverse_proxy tracardi-api:80
+        }
+    command: ["sh", "-c", "printf '%s\n' \"$${CADDYFILE}\" > /etc/caddy/Caddyfile && exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile"]
+    restart: unless-stopped
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # CLICKHOUSE — Analytical warehouse (Coxa events + KPI data)
+  # ══════════════════════════════════════════════════════════════════════════
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    ports:
+      - "8123:8123"   # HTTP interface (Cube, clients)
+      - "9000:9000"   # Native TCP (RudderStack destination)
+    environment:
+      CLICKHOUSE_DB: coxa
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-coxa}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-coxa_dev_password}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./infrastructure/clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --host 127.0.0.1 --query 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # CUBE — Semantic KPI layer (defines metrics once, serves everywhere)
+  # ══════════════════════════════════════════════════════════════════════════
+
+  cube:
+    image: cubejs/cube:latest
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    ports:
+      - "4000:4000"   # REST + GraphQL API
+      - "3000:3000"   # Cube Developer Playground
+    environment:
+      CUBEJS_DB_TYPE: clickhouse
+      CUBEJS_DB_HOST: clickhouse
+      CUBEJS_DB_PORT: 8123
+      CUBEJS_DB_NAME: coxa
+      CUBEJS_DB_USER: ${CLICKHOUSE_USER:-coxa}
+      CUBEJS_DB_PASS: ${CLICKHOUSE_PASSWORD:-coxa_dev_password}
+      CUBEJS_API_SECRET: ${CUBE_API_SECRET:-coxa-cube-dev-secret-change-in-prod}
+      # Set CUBEJS_DEV_MODE=false in production to disable the Playground UI on port 3000
+      CUBEJS_DEV_MODE: ${CUBEJS_DEV_MODE:-false}
+      # Use redis for cache/queue in production for persistence across restarts
+      CUBEJS_CACHE_AND_QUEUE_DRIVER: ${CUBEJS_CACHE_DRIVER:-memory}
+    volumes:
+      - ./infrastructure/cube:/cube/conf
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:4000/livez', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  # ══════════════════════════════════════════════════════════════════════════
+  # DAGSTER — Pipeline orchestration (ML training, MV refresh, data jobs)
+  # ══════════════════════════════════════════════════════════════════════════
+
+  dagster-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: dagster
+      POSTGRES_PASSWORD: ${DAGSTER_DB_PASSWORD:-dagster_dev_password}
+      POSTGRES_DB: dagster
+    volumes:
+      - dagster_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dagster -d dagster"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  dagster-webserver:
+    image: dagster/dagster-celery-k8s:latest
+    command: dagster-webserver -h 0.0.0.0 -p 3030 -w /opt/dagster/workspace.yaml
+    depends_on:
+      dagster-db:
+        condition: service_healthy
+    ports:
+      - "3030:3030"
+    environment:
+      DAGSTER_POSTGRES_HOST: dagster-db
+      DAGSTER_POSTGRES_PORT: 5432
+      DAGSTER_POSTGRES_USER: dagster
+      DAGSTER_POSTGRES_PASSWORD: ${DAGSTER_DB_PASSWORD:-dagster_dev_password}
+      DAGSTER_POSTGRES_DB: dagster
+      DAGSTER_HOME: /opt/dagster/dagster_home
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-coxa_dev_password}
+    volumes:
+      - ./infrastructure/dagster:/opt/dagster
+      - dagster_home:/opt/dagster/dagster_home
+    restart: unless-stopped
+
+  dagster-daemon:
+    image: dagster/dagster-celery-k8s:latest
+    command: dagster-daemon run
+    depends_on:
+      dagster-db:
+        condition: service_healthy
+    environment:
+      DAGSTER_POSTGRES_HOST: dagster-db
+      DAGSTER_POSTGRES_PORT: 5432
+      DAGSTER_POSTGRES_USER: dagster
+      DAGSTER_POSTGRES_PASSWORD: ${DAGSTER_DB_PASSWORD:-dagster_dev_password}
+      DAGSTER_POSTGRES_DB: dagster
+      DAGSTER_HOME: /opt/dagster/dagster_home
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-coxa_dev_password}
+    volumes:
+      - ./infrastructure/dagster:/opt/dagster
+      - dagster_home:/opt/dagster/dagster_home
+    restart: unless-stopped
+
+volumes:
+  rudderstack_pgdata:
+  posthog_pgdata:
+  posthog_chdata:
+  posthog_kafka_data:
+  caddy_data:    # Let's Encrypt certs — persists across container rebuilds
+  caddy_config:
+  clickhouse_data:
+  dagster_pgdata:
+  dagster_home:
+
+networks:
+  coxa_services:
+    name: coxa_services
+    driver: bridge

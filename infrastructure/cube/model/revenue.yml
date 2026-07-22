@@ -1,0 +1,62 @@
+cubes:
+  - name: Revenue
+    sql: |
+      SELECT
+        tenant_id,
+        sale_date                   AS period_date,
+        'retail'                    AS stream,
+        revenue_cents,
+        orders                      AS transactions
+      FROM coxa.mv_daily_sales
+      WHERE is_return = 0
+      UNION ALL
+      SELECT
+        t.tenant_id,
+        toDate(t.issued_at)         AS period_date,
+        'tickets'                   AS stream,
+        t.price_cents               AS revenue_cents,
+        1                           AS transactions
+      FROM coxa.coxa_tickets t
+      WHERE t.status != 'cancelled'
+      UNION ALL
+      SELECT
+        m.tenant_id,
+        toDate(m.event_timestamp)   AS period_date,
+        'membership'                AS stream,
+        m.price_cents               AS revenue_cents,
+        1                           AS transactions
+      FROM coxa.coxa_memberships m
+      WHERE m.action IN ('created', 'renewed', 'upgraded')
+    description: Cross-stream revenue view — retail + tickets + memberships
+
+    dimensions:
+      - name: tenantId
+        sql: tenant_id
+        type: string
+        primary_key: true
+
+      - name: periodDate
+        sql: period_date
+        type: time
+
+      - name: stream
+        sql: stream
+        type: string
+
+    measures:
+      - name: totalRevenueCents
+        sql: revenue_cents
+        type: sum
+        description: Total platform revenue across all streams
+        format: currency
+
+      - name: totalTransactions
+        sql: transactions
+        type: sum
+        description: Total transaction count
+
+      - name: revenuePerTransaction
+        sql: "toFloat64(sum(revenue_cents)) / nullIf(sum(transactions), 0)"
+        type: number
+        description: Average revenue per transaction
+        format: currency

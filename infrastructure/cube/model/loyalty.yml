@@ -1,0 +1,55 @@
+cubes:
+  - name: Loyalty
+    sql_table: coxa.coxa_loyalty
+    description: Loyalty programme ledger — points earned and redeemed
+
+    dimensions:
+      - name: tenantId
+        sql: tenant_id
+        type: string
+        primary_key: true
+
+      - name: fanProfileId
+        sql: fan_profile_id
+        type: string
+
+      - name: action
+        sql: action
+        type: string
+
+      - name: reason
+        sql: reason
+        type: string
+
+      - name: sourceEvent
+        sql: source_event
+        type: string
+
+      - name: eventTimestamp
+        sql: event_timestamp
+        type: time
+
+    measures:
+      - name: pointsIssued
+        sql: "CASE WHEN points > 0 THEN points ELSE 0 END"
+        type: sum
+        description: Total points earned by fans
+
+      - name: pointsRedeemed
+        sql: "CASE WHEN points < 0 THEN abs(points) ELSE 0 END"
+        type: sum
+        description: Total points spent by fans
+
+      - name: redemptionRatePct
+        sql: |
+          toFloat64(sumIf(abs(points), points < 0)) /
+          nullIf(sumIf(points, points > 0), 0) * 100
+        type: number
+        description: Points redeemed as % of points issued
+
+      - name: activeEarners
+        sql: fan_profile_id
+        type: count_distinct
+        filters:
+          - sql: "points > 0"
+        description: Distinct fans who earned points in period

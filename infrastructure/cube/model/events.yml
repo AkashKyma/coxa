@@ -1,0 +1,47 @@
+cubes:
+  - name: CdpEvents
+    sql_table: coxa.coxa_events
+    description: Raw CDP event stream — all fan touchpoints
+
+    dimensions:
+      - name: tenantId
+        sql: tenant_id
+        type: string
+        primary_key: true
+
+      - name: eventName
+        sql: event_name
+        type: string
+
+      - name: source
+        sql: source
+        type: string
+
+      - name: fanProfileId
+        sql: fan_profile_id
+        type: string
+
+      - name: eventTimestamp
+        sql: event_timestamp
+        type: time
+
+    measures:
+      - name: eventCount
+        sql: event_id
+        type: count
+        description: Total events
+
+      - name: uniqueFans
+        sql: fan_profile_id
+        type: count_distinct
+        description: Unique fans who generated events
+
+      - name: webEvents
+        sql: "CASE WHEN source IN ('web_sdk', 'fan_app') THEN 1 ELSE 0 END"
+        type: sum
+        description: Events from web or app channels
+
+      - name: backendEvents
+        sql: "CASE WHEN source NOT IN ('web_sdk', 'fan_app') THEN 1 ELSE 0 END"
+        type: sum
+        description: Events from backend services

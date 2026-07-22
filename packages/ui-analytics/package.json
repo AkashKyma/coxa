@@ -1,0 +1,23 @@
+{
+  "name": "@coxa/ui-analytics",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "exports": {
+    ".": {
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    }
+  },
+  "peerDependencies": {
+    "lucide-react": ">=1",
+    "react": ">=18",
+    "react-dom": ">=18",
+    "recharts": ">=3"
+  },
+  "dependencies": {
+    "react-querybuilder": "^8.20.2"
+  }
+}

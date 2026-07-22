@@ -1,0 +1,80 @@
+/* club-auth local styles — extends @coxa/ui */
+
+.step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 1.25rem 0 1.5rem;
+}
+
+.step-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--coxa-border);
+  color: var(--coxa-text-muted);
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.step-dot.done {
+  background: var(--coxa-primary);
+  color: var(--coxa-text-inverse);
+}
+
+.step-line {
+  flex: 1;
+  height: 2px;
+  background: var(--coxa-border);
+}
+
+.auth-alert {
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--coxa-radius);
+  background: var(--coxa-danger-soft);
+  border: 1px solid var(--coxa-danger);
+  color: #991b1b;
+  font-size: 0.875rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.form-row button { margin-top: 0; }
+
+.form-col { display: flex; flex-direction: column; }
+.form-col label { font-size: 0.85rem; color: var(--coxa-text-muted); margin-bottom: 0.35rem; }
+
+.auth-card select {
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--coxa-radius);
+  border: 1px solid var(--coxa-border);
+  background: var(--coxa-surface);
+  color: var(--coxa-text);
+  appearance: auto;
+}
+
+.btn-back {
+  padding: 0.75rem;
+  border: 1px solid var(--coxa-border);
+  border-radius: var(--coxa-radius);
+  background: transparent;
+  color: var(--coxa-text);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-back:hover { background: var(--coxa-surface-hover); }
+
+@media (max-width: 480px) {
+  .form-row { grid-template-columns: 1fr; }
+}

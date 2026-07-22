@@ -1,0 +1,107 @@
+cubes:
+  - name: Fans
+    sql_table: coxa.fan_360
+    description: Fan profiles with aggregated activity stats
+
+    dimensions:
+      - name: tenantId
+        sql: tenant_id
+        type: string
+        primary_key: true
+
+      - name: fanProfileId
+        sql: fan_profile_id
+        type: string
+
+      - name: fullName
+        sql: full_name
+        type: string
+
+      - name: email
+        sql: email
+        type: string
+
+      - name: membershipStatus
+        sql: membership_status
+        type: string
+
+      - name: membershipPlanCode
+        sql: membership_plan_code
+        type: string
+
+      - name: membershipTierLevel
+        sql: membership_tier_level
+        type: number
+
+      - name: nextBestChannel
+        sql: next_best_channel
+        type: string
+
+      - name: registeredAt
+        sql: registered_at
+        type: time
+
+      - name: lastActivityAt
+        sql: last_activity_at
+        type: time
+
+      - name: hasCpf
+        sql: has_cpf
+        type: boolean
+
+      - name: isForeigner
+        sql: is_foreigner
+        type: boolean
+
+    measures:
+      - name: totalFans
+        sql: fan_profile_id
+        type: count
+        description: Total active fan profiles
+
+      - name: withCpf
+        sql: has_cpf
+        type: sum
+        description: Fans with CPF on record
+
+      - name: withForeigners
+        sql: is_foreigner
+        type: sum
+        description: Foreign fan profiles
+
+      - name: withEmail
+        sql: "CASE WHEN length(email) > 0 THEN 1 ELSE 0 END"
+        type: sum
+        description: Fans with email address
+
+      - name: withPhone
+        sql: "CASE WHEN length(phone) > 0 THEN 1 ELSE 0 END"
+        type: sum
+        description: Fans with phone number
+
+      - name: avgFanScore
+        sql: fan_score
+        type: avg
+        description: Average fan engagement score
+
+      - name: avgChurnRisk
+        sql: churn_risk_score
+        type: avg
+        description: Average churn risk score
+
+      - name: fansAtChurnRisk
+        sql: "CASE WHEN churn_risk_score > 0.7 THEN 1 ELSE 0 END"
+        type: sum
+        description: Fans with churn risk > 70%
+
+      - name: activeFans30d
+        sql: "CASE WHEN last_activity_at >= now() - INTERVAL 30 DAY THEN 1 ELSE 0 END"
+        type: sum
+        description: Fans active in last 30 days
+
+      - name: dataCompletenessPct
+        sql: |
+          toFloat32(countIf(has_cpf = 1 AND length(email) > 0 AND length(phone) > 0)) /
+          toFloat32(count()) * 100
+        type: number
+        description: Fan profile data completeness percentage

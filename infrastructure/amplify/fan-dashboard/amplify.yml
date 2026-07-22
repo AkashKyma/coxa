@@ -1,0 +1,26 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - cd ../.. && npm ci
+    build:
+      commands:
+        # Write env vars into the app's .env file so Vite can pick them up at
+        # build time.  These variables must be set in the Amplify Console under
+        # App settings → Environment variables (they are NOT secrets; they are
+        # baked into the JS bundle).
+        - |
+          cat > ../../apps/fan-dashboard/.env << 'EOF'
+          VITE_API_URL=${VITE_API_URL}
+          VITE_AUTH_URL=${VITE_AUTH_URL}
+          VITE_TENANT_ID=${VITE_TENANT_ID}
+          EOF
+        - cd ../.. && npm run build:fan-dashboard
+  artifacts:
+    baseDirectory: dist
+    files:
+      - "**/*"
+  cache:
+    paths:
+      - ../../node_modules/**/*

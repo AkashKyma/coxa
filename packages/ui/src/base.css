@@ -1,0 +1,51 @@
+@import "./tokens.css";
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--coxa-font);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--coxa-text);
+  background: var(--coxa-bg);
+}
+
+h1, h2, h3, h4 {
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+a {
+  color: var(--coxa-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+code {
+  font-family: var(--coxa-font-mono);
+  font-size: 0.875em;
+  background: var(--coxa-surface-raised);
+  padding: 0.1em 0.35em;
+  border-radius: var(--coxa-radius-sm);
+}
+
+button, input, select, textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--coxa-primary);
+  outline-offset: 2px;
+}

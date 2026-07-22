@@ -1,0 +1,13 @@
+﻿{
+  "mcpServers": {
+    "coxa-pos": {
+      "command": "node",
+      "args": ["backend/src/mcp/server.js"],
+      "env": {
+        "MCP_API_URL": "http://localhost:5000",
+        "MCP_TENANT_ID": "coxa-club-001",
+        "MCP_TRANSPORT": "stdio"
+      }
+    }
+  }
+}

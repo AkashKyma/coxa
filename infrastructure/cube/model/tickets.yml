@@ -1,0 +1,65 @@
+cubes:
+  - name: Tickets
+    sql_table: coxa.mv_weekly_tickets
+    description: Weekly ticket issuance and attendance aggregates
+
+    dimensions:
+      - name: tenantId
+        sql: tenant_id
+        type: string
+        primary_key: true
+
+      - name: weekStart
+        sql: week_start
+        type: time
+
+      - name: matchEventId
+        sql: match_event_id
+        type: string
+
+      - name: eventTitle
+        sql: event_title
+        type: string
+
+    measures:
+      - name: ticketsIssued
+        sql: tickets_issued
+        type: sum
+        description: Total tickets sold
+
+      - name: ticketsUsed
+        sql: tickets_used
+        type: sum
+        description: Tickets scanned at gate (attended)
+
+      - name: noShows
+        sql: no_shows
+        type: sum
+        description: Tickets sold but not used
+
+      - name: ticketRevenueCents
+        sql: revenue_cents
+        type: sum
+        description: Total ticket revenue
+        format: currency
+
+      - name: avgTicketValueCents
+        sql: "toFloat64(sum(revenue_cents)) / nullIf(sum(tickets_issued), 0)"
+        type: number
+        description: Average ticket price
+        format: currency
+
+      - name: ticketUseRatePct
+        sql: "toFloat64(sum(tickets_used)) / nullIf(sum(tickets_issued), 0) * 100"
+        type: number
+        description: Percentage of tickets actually used
+
+      - name: noShowRatePct
+        sql: "toFloat64(sum(no_shows)) / nullIf(sum(tickets_issued), 0) * 100"
+        type: number
+        description: Percentage of no-shows
+
+      - name: avgTicketsPerMatch
+        sql: "toFloat64(sum(tickets_issued)) / nullIf(count(DISTINCT match_event_id), 0)"
+        type: number
+        description: Average tickets per fixture

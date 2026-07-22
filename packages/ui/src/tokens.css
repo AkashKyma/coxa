@@ -1,0 +1,85 @@
+/**
+ * Coxa Fan OS — brand palette (all web apps)
+ * Ink #1E212B · Green #4D8B31 · Gold #FFC800 · Orange #FF8427 · White #FFFFFF
+ */
+:root {
+  /* Raw palette */
+  --coxa-ink: #1e212b;
+  --coxa-green: #4d8b31;
+  --coxa-gold: #ffc800;
+  --coxa-orange: #ff8427;
+  --coxa-white: #ffffff;
+
+  /* Brand — green primary actions, navy dark accents */
+  --coxa-primary: var(--coxa-green);
+  --coxa-primary-hover: #3f7429;
+  --coxa-primary-dim: var(--coxa-ink);
+  --coxa-primary-soft: rgba(77, 139, 49, 0.12);
+
+  /* Accent — gold highlights, orange warm emphasis */
+  --coxa-accent: var(--coxa-gold);
+  --coxa-accent-hover: #e6b400;
+  --coxa-accent-soft: rgba(255, 200, 0, 0.18);
+  --coxa-orange-soft: rgba(255, 132, 39, 0.14);
+
+  /* Surfaces — light */
+  --coxa-bg: #f0f2f5;
+  --coxa-surface: var(--coxa-white);
+  --coxa-surface-raised: #f8f9fb;
+  --coxa-surface-hover: #ebeef2;
+  --coxa-border: #dde1e8;
+  --coxa-border-strong: #c5cad4;
+
+  /* Text */
+  --coxa-text: var(--coxa-ink);
+  --coxa-text-muted: #5c6370;
+  --coxa-text-inverse: var(--coxa-white);
+
+  /* Feedback */
+  --coxa-danger: #c53030;
+  --coxa-danger-soft: rgba(197, 48, 48, 0.1);
+  --coxa-warning: var(--coxa-orange);
+  --coxa-warning-soft: var(--coxa-orange-soft);
+  --coxa-success: var(--coxa-green);
+  --coxa-success-soft: rgba(77, 139, 49, 0.12);
+
+  /* Typography */
+  --coxa-font: "DM Sans", "Segoe UI", system-ui, sans-serif;
+  --coxa-font-mono: "Consolas", "Courier New", monospace;
+
+  /* Spacing */
+  --coxa-space-1: 0.25rem;
+  --coxa-space-2: 0.5rem;
+  --coxa-space-3: 0.75rem;
+  --coxa-space-4: 1rem;
+  --coxa-space-5: 1.25rem;
+  --coxa-space-6: 1.5rem;
+  --coxa-space-8: 2rem;
+
+  /* Radius */
+  --coxa-radius-sm: 6px;
+  --coxa-radius: 10px;
+  --coxa-radius-lg: 14px;
+  --coxa-radius-full: 999px;
+
+  /* Layout */
+  --coxa-sidebar-width: 240px;
+  --coxa-content-max: 1120px;
+  --coxa-auth-width: 420px;
+
+  /* Shadows */
+  --coxa-shadow-sm: 0 1px 2px rgba(30, 33, 43, 0.06);
+  --coxa-shadow-md: 0 4px 16px rgba(30, 33, 43, 0.1);
+  --coxa-shadow-lg: 0 12px 40px rgba(30, 33, 43, 0.14);
+
+  /* Aliases */
+  --bg: var(--coxa-bg);
+  --surface: var(--coxa-surface);
+  --surface-hover: var(--coxa-surface-hover);
+  --border: var(--coxa-border);
+  --text: var(--coxa-text);
+  --muted: var(--coxa-text-muted);
+  --accent: var(--coxa-primary);
+  --accent-hover: var(--coxa-primary-hover);
+  --radius: var(--coxa-radius);
+}

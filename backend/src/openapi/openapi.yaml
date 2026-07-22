@@ -1,0 +1,1277 @@
+openapi: "3.1.0"
+info:
+  title: Coxa Fan OS API
+  version: "0.2.0"
+  description: |
+    REST API for the Coxa Fan Operating System.
+    Covers authentication, retail POS, ticketing, fan CDP, loyalty, and personalization.
+    ## Authentication
+    Obtain a JWT from POST /auth/login then pass Authorization: Bearer token.
+    ## Tenant Context
+    Every request needs x-tenant-id header (club identifier, e.g. coxa-club-001).
+    ## Rate Limits
+    Auth: 30/15min | Ticket ops: 60/min | Default: 500/min.
+servers:
+  - url: /api/v1
+    description: Current API version
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    tenantHeader:
+      type: apiKey
+      in: header
+      name: x-tenant-id
+  parameters:
+    tenantId:
+      name: x-tenant-id
+      in: header
+      required: true
+      schema:
+        type: string
+        example: coxa-club-001
+    clubId:
+      name: X-Club-Id
+      in: header
+      schema:
+        type: string
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+    User:
+      type: object
+      properties:
+        _id:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [active, inactive, suspended]
+        createdAt:
+          type: string
+          format: date-time
+    Club:
+      type: object
+      properties:
+        _id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        country:
+          type: string
+        city:
+          type: string
+        tenantId:
+          type: string
+    Location:
+      type: object
+      properties:
+        _id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [retail_store, fnb_stand, ticket_booth, warehouse]
+        status:
+          type: string
+          enum: [active, inactive]
+    SaleLine:
+      type: object
+      properties:
+        skuId:
+          type: string
+        skuCode:
+          type: string
+        productName:
+          type: string
+        qty:
+          type: integer
+        unitPriceCents:
+          type: integer
+        lineTotalCents:
+          type: integer
+    Sale:
+      type: object
+      properties:
+        _id:
+          type: string
+        saleNumber:
+          type: string
+        locationId:
+          type: string
+        lines:
+          type: array
+          items:
+            ref: "#/components/schemas/SaleLine"
+        totalCents:
+          type: integer
+        paymentMethod:
+          type: string
+          enum: [cash, card, pix, voucher, stub]
+        status:
+          type: string
+          enum: [completed, voided]
+        channel:
+          type: string
+          enum: [pos, fan_shop, box_office]
+        createdAt:
+          type: string
+          format: date-time
+    SaleLineQr:
+      type: object
+      properties:
+        qrToken:
+          type: string
+        unitIndex:
+          type: integer
+        status:
+          type: string
+          enum: [issued, redeemed, voided]
+        redeemedAt:
+          type: string
+          format: date-time
+    MatchEvent:
+      type: object
+      properties:
+        _id:
+          type: string
+        name:
+          type: string
+        homeTeam:
+          type: string
+        awayTeam:
+          type: string
+        matchDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [scheduled, on_sale, sold_out, cancelled, completed]
+    Ticket:
+      type: object
+      properties:
+        _id:
+          type: string
+        matchEventId:
+          type: string
+        fanProfileId:
+          type: string
+        qrToken:
+          type: string
+        seat:
+          type: string
+        status:
+          type: string
+          enum: [issued, used, cancelled]
+    FanProfile:
+      type: object
+      properties:
+        _id:
+          type: string
+        fanId:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        memberId:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+    CdpEvent:
+      type: object
+      properties:
+        _id:
+          type: string
+        eventName:
+          type: string
+        source:
+          type: string
+        fanProfileId:
+          type: string
+        idempotencyKey:
+          type: string
+        eventTimestamp:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [accepted, processed, dlq]
+        payload:
+          type: object
+    Segment:
+      type: object
+      properties:
+        _id:
+          type: string
+        name:
+          type: string
+        rules:
+          type: array
+          items:
+            type: object
+        memberCount:
+          type: integer
+
+security:
+  - bearerAuth: []
+  - tenantHeader: []
+
+paths:
+
+  # ── Authentication ────────────────────────────────
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Staff login
+      description: Authenticates a staff user and returns a Bearer JWT plus club/membership info.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: admin@clubfc.com
+                password:
+                  type: string
+                  format: password
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        ref: "#/components/schemas/User"
+                      club:
+                        ref: "#/components/schemas/Club"
+                      membership:
+                        type: object
+                        properties:
+                          role:
+                            type: string
+                      token:
+                        type: string
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                ref: "#/components/schemas/Error"
+
+  /auth/signup:
+    post:
+      tags: [Authentication]
+      summary: Create club account
+      description: Creates a new staff user account plus club organization in one step.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName, email, password, clubName, country, city]
+              properties:
+                fullName:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                clubName:
+                  type: string
+                country:
+                  type: string
+                city:
+                  type: string
+      responses:
+        "201":
+          description: Account created
+        "409":
+          description: Email already in use
+
+  /auth/fan/login:
+    post:
+      tags: [Authentication]
+      summary: Fan login
+      description: Authenticates a fan user. Returns JWT and fan profile.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Fan login successful
+        "403":
+          description: No fan profile linked to this account
+
+  /auth/fan/signup:
+    post:
+      tags: [Authentication]
+      summary: Fan registration
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fullName, email, password]
+              properties:
+                fullName:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                phone:
+                  type: string
+                memberId:
+                  type: string
+      responses:
+        "201":
+          description: Fan account created
+        "409":
+          description: Email already in use
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get current staff user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user with memberships
+
+  /auth/fan/me:
+    get:
+      tags: [Authentication]
+      summary: Get current fan user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current fan user with fan profile
+
+  # ── Retail / POS ──────────────────────────────────
+  /retail/locations:
+    get:
+      tags: [Retail]
+      summary: List POS locations
+      description: Returns all retail and F&B locations for the tenant.
+      responses:
+        "200":
+          description: List of locations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      ref: "#/components/schemas/Location"
+                  total:
+                    type: integer
+    post:
+      tags: [Retail]
+      summary: Create location
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name, type]
+              properties:
+                code:
+                  type: string
+                name:
+                  type: string
+                type:
+                  type: string
+                  enum: [retail_store, fnb_stand, ticket_booth, warehouse]
+      responses:
+        "201":
+          description: Location created
+        "409":
+          description: Location code already exists
+
+  /retail/catalog:
+    get:
+      tags: [Retail]
+      summary: Product catalog
+      description: Returns the active product catalog. Pass locationId to get location-specific stock and prices.
+      parameters:
+        - name: locationId
+          in: query
+          schema:
+            type: string
+          description: Filter catalog to a specific POS location
+      responses:
+        "200":
+          description: Product catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sku:
+                          type: object
+                        product:
+                          type: object
+
+  /retail/sales:
+    get:
+      tags: [Retail]
+      summary: List sales
+      parameters:
+        - name: today
+          in: query
+          schema:
+            type: boolean
+          description: Filter to sales created today
+        - name: locationId
+          in: query
+          schema:
+            type: string
+        - name: channel
+          in: query
+          schema:
+            type: string
+            enum: [pos, fan_shop, box_office]
+      responses:
+        "200":
+          description: List of sales (max 200)
+    post:
+      tags: [Retail]
+      summary: Create sale
+      description: Completes a retail sale. Deducts stock, publishes CDP event, enqueues QR generation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [locationId, lines]
+              properties:
+                locationId:
+                  type: string
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    required: [skuId, qty]
+                    properties:
+                      skuId:
+                        type: string
+                      qty:
+                        type: integer
+                        minimum: 1
+                paymentMethod:
+                  type: string
+                  enum: [cash, card, pix, voucher, stub]
+                  default: cash
+                fanEmail:
+                  type: string
+                  format: email
+                  description: Optional — links sale to fan profile
+                fanProfileId:
+                  type: string
+                  description: Optional — alternative to fanEmail
+      responses:
+        "201":
+          description: Sale created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    ref: "#/components/schemas/Sale"
+        "400":
+          description: Validation error (missing locationId or lines)
+        "404":
+          description: Location or SKU not found
+
+  /retail/sales/{id}:
+    get:
+      tags: [Retail]
+      summary: Get sale by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Sale detail with location info
+        "404":
+          description: Sale not found
+
+  /retail/sales/{saleId}/qr-codes:
+    get:
+      tags: [Retail]
+      summary: Get sale QR codes
+      description: Returns per-unit QR tokens for a completed sale, grouped by sale line.
+      parameters:
+        - name: saleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: QR codes grouped by sale line
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      saleId:
+                        type: string
+                      saleNumber:
+                        type: string
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            saleLineIndex:
+                              type: integer
+                            productName:
+                              type: string
+                            tokens:
+                              type: array
+                              items:
+                                ref: "#/components/schemas/SaleLineQr"
+                      totalTokens:
+                        type: integer
+
+  /retail/sale-qr/redeem:
+    post:
+      tags: [Retail]
+      summary: Redeem sale QR
+      description: Marks a single per-unit QR token as redeemed at the point of delivery.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qrToken]
+              properties:
+                qrToken:
+                  type: string
+      responses:
+        "200":
+          description: QR redeemed
+        "409":
+          description: Already redeemed or voided
+        "404":
+          description: QR token not found
+
+  # ── Ticketing ──────────────────────────────────────
+  /ticketing/events:
+    get:
+      tags: [Ticketing]
+      summary: List match events
+      parameters:
+        - name: upcoming
+          in: query
+          schema:
+            type: boolean
+          description: If true, returns only future events
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [scheduled, on_sale, sold_out, cancelled, completed]
+      responses:
+        "200":
+          description: List of match events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      ref: "#/components/schemas/MatchEvent"
+    post:
+      tags: [Ticketing]
+      summary: Create match event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, matchDate]
+              properties:
+                name:
+                  type: string
+                homeTeam:
+                  type: string
+                awayTeam:
+                  type: string
+                matchDate:
+                  type: string
+                  format: date-time
+                venueId:
+                  type: string
+      responses:
+        "201":
+          description: Match event created
+
+  /ticketing/events/{id}:
+    get:
+      tags: [Ticketing]
+      summary: Get match event detail
+      description: Returns event with ticket products and check-in windows.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event detail with products and windows
+        "404":
+          description: Event not found
+
+  /ticketing/events/{id}/status:
+    patch:
+      tags: [Ticketing]
+      summary: Update event status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [scheduled, on_sale, sold_out, cancelled, completed]
+      responses:
+        "200":
+          description: Status updated
+
+  /ticketing/events/{id}/ticket-products:
+    get:
+      tags: [Ticketing]
+      summary: List ticket products for event
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Ticket products (tiers/sections)
+    post:
+      tags: [Ticketing]
+      summary: Create ticket product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, priceCents, totalQty]
+              properties:
+                name:
+                  type: string
+                  example: Section A - General
+                priceCents:
+                  type: integer
+                totalQty:
+                  type: integer
+      responses:
+        "201":
+          description: Ticket product created
+
+  /ticketing/tickets:
+    get:
+      tags: [Ticketing]
+      summary: List tickets
+      parameters:
+        - name: fanProfileId
+          in: query
+          schema:
+            type: string
+        - name: matchEventId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [issued, used, cancelled]
+      responses:
+        "200":
+          description: List of tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      ref: "#/components/schemas/Ticket"
+
+  /ticketing/tickets/issue:
+    post:
+      tags: [Ticketing]
+      summary: Issue tickets
+      description: |
+        Issues match tickets. Supports three modes:
+        1. From reservation (pass reservationId)
+        2. Direct with lines array (fan app flow)
+        3. Direct with ticketProductId + qty (box office POS flow)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                matchEventId:
+                  type: string
+                ticketProductId:
+                  type: string
+                qty:
+                  type: integer
+                  default: 1
+                fanProfileId:
+                  type: string
+                fanEmail:
+                  type: string
+                  format: email
+                paymentMethod:
+                  type: string
+                  enum: [cash, card, pix, stub]
+                  default: cash
+                channel:
+                  type: string
+                  enum: [box_office, fan_app]
+                  default: box_office
+                idempotencyKey:
+                  type: string
+                  description: Deduplication key — same key returns original result
+                reservationId:
+                  type: string
+                  description: Issue from an existing reservation
+      responses:
+        "201":
+          description: Tickets issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      ref: "#/components/schemas/Ticket"
+                  duplicate:
+                    type: boolean
+        "200":
+          description: Duplicate — returned original tickets
+
+  /ticketing/tickets/{id}/cancel:
+    post:
+      tags: [Ticketing]
+      summary: Cancel ticket
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Ticket cancelled
+
+  /ticketing/entitlements/validate:
+    get:
+      tags: [Ticketing]
+      summary: Validate QR (GET)
+      description: Validate an entry QR token at the gate. Query param version.
+      parameters:
+        - name: qrToken
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: matchEventId
+          in: query
+          schema:
+            type: string
+        - name: markUsed
+          in: query
+          schema:
+            type: boolean
+        - name: gateId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validation result
+    post:
+      tags: [Ticketing]
+      summary: Validate QR (POST)
+      description: Validate an entry QR token at the gate. Body version — preferred for POS/gate hardware.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qrToken]
+              properties:
+                qrToken:
+                  type: string
+                matchEventId:
+                  type: string
+                markUsed:
+                  type: boolean
+                  default: false
+                gateId:
+                  type: string
+                deviceId:
+                  type: string
+      responses:
+        "200":
+          description: Validation result
+        "404":
+          description: QR token not found
+        "409":
+          description: Already used
+
+  /ticketing/shop/events:
+    get:
+      tags: [Ticketing]
+      summary: Fan shop — list events with ticket products
+      description: Public endpoint for fan-facing ticket shop. Returns upcoming events with purchasable ticket products.
+      security: []
+      responses:
+        "200":
+          description: Events with ticket products
+
+  /ticketing/shop/purchase:
+    post:
+      tags: [Ticketing]
+      summary: Fan shop — purchase tickets
+      description: Fan-facing ticket purchase. Authentication optional (uses fan profile from JWT if present).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [matchEventId, lines]
+              properties:
+                matchEventId:
+                  type: string
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ticketProductId:
+                        type: string
+                      qty:
+                        type: integer
+                fanProfileId:
+                  type: string
+                fanEmail:
+                  type: string
+                paymentMethod:
+                  type: string
+                idempotencyKey:
+                  type: string
+      responses:
+        "201":
+          description: Tickets purchased
+        "200":
+          description: Duplicate purchase — original tickets returned
+
+  # ── CDP ───────────────────────────────────────────
+  /cdp/events:
+    get:
+      tags: [CDP]
+      summary: List CDP events
+      parameters:
+        - name: eventName
+          in: query
+          schema:
+            type: string
+            example: sale.completed
+        - name: fanProfileId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [accepted, processed, dlq]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        "200":
+          description: List of CDP events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      ref: "#/components/schemas/CdpEvent"
+    post:
+      tags: [CDP]
+      summary: Ingest CDP event
+      description: |
+        Publishes a domain event into the CDP pipeline.
+        Supported event names: sale.completed, fan.registered, ticket.purchased,
+        ticket.used, member.checked_in, no_show.recorded, loyalty.points.earned.
+        Idempotent — same idempotencyKey returns the existing event.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventName, source, idempotencyKey]
+              properties:
+                eventName:
+                  type: string
+                  example: sale.completed
+                source:
+                  type: string
+                  example: retail_pos
+                idempotencyKey:
+                  type: string
+                fanProfileId:
+                  type: string
+                fanEmail:
+                  type: string
+                eventTimestamp:
+                  type: string
+                  format: date-time
+                payload:
+                  type: object
+      responses:
+        "201":
+          description: Event ingested
+        "200":
+          description: Duplicate — existing event returned
+
+  /cdp/events/{id}/replay:
+    post:
+      tags: [CDP]
+      summary: Replay DLQ event
+      description: Re-processes a failed event from the dead letter queue.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Event replayed
+        "404":
+          description: DLQ event not found
+
+  /cdp/profiles/search:
+    get:
+      tags: [CDP]
+      summary: Search fan profiles
+      description: Full-text search on fan profiles by email or name.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            example: john@fan.com
+      responses:
+        "200":
+          description: Matching fan profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      ref: "#/components/schemas/FanProfile"
+
+  /cdp/customer-360:
+    get:
+      tags: [CDP]
+      summary: Customer 360 lookup
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Fan profile ID or search term
+        - name: revealPii
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include PII fields (phone, full email)
+      responses:
+        "200":
+          description: Customer 360 profile
+        "400":
+          description: q or fanProfileId required
+        "404":
+          description: Fan profile not found
+
+  /cdp/customer-360/{fanProfileId}:
+    get:
+      tags: [CDP]
+      summary: Customer 360 by fan profile ID
+      parameters:
+        - name: fanProfileId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: revealPii
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Customer 360 profile
+
+  /cdp/segments:
+    get:
+      tags: [CDP]
+      summary: List segments
+      responses:
+        "200":
+          description: List of fan segments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      ref: "#/components/schemas/Segment"
+    post:
+      tags: [CDP]
+      summary: Create segment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, rules]
+              properties:
+                name:
+                  type: string
+                rules:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        "201":
+          description: Segment created
+        "409":
+          description: Segment name already exists
+
+  /cdp/segments/preview:
+    post:
+      tags: [CDP]
+      summary: Preview segment membership
+      description: Returns fan profiles that would match the given rule set without persisting.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rules:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        "200":
+          description: Preview of matching fan profiles
+
+  /cdp/segments/{id}:
+    get:
+      tags: [CDP]
+      summary: Get segment by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Segment detail
+        "404":
+          description: Segment not found
+    patch:
+      tags: [CDP]
+      summary: Update segment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                rules:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        "200":
+          description: Segment updated
+
+  # ── Utility ──────────────────────────────────────
+  /health:
+    get:
+      tags: [Utility]
+      summary: Health check
+      description: Returns service status. Used by ALB health checks.
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: coxa-backend
+                  version:
+                    type: string
+
+tags:
+  - name: Authentication
+    description: Staff and fan login, signup, and session endpoints
+  - name: Retail
+    description: POS catalog, sales, stock, and QR redemption
+  - name: Ticketing
+    description: Match events, ticket issuance, and gate QR validation
+  - name: CDP
+    description: Fan profiles, events pipeline, segments, and Customer 360
+  - name: Utility
+    description: Health check and metrics endpoints

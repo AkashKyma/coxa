@@ -1,0 +1,218 @@
+﻿/* â”€â”€â”€ Coxa iD Landing â€” minimal full-screen â”€â”€â”€â”€â”€â”€â”€ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: "DM Sans", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* â”€â”€ Full-screen bg â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.landing {
+  position: relative;
+  height: 100dvh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  /* Fallback when image fails to load */
+  background-color: #111b0d;
+}
+
+/* Stadium background image */
+.landing__bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.landing__bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 35%;
+  animation: bg-zoom 20s ease-in-out infinite alternate;
+  display: block;
+}
+
+@keyframes bg-zoom {
+  from { transform: scale(1);    }
+  to   { transform: scale(1.06); }
+}
+
+/* Green-tinted dark overlay */
+.landing__overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(18, 30, 14, 0.55) 0%,
+      rgba(30, 52, 18, 0.72) 40%,
+      rgba(10, 18, 8,  0.88) 100%
+    );
+  z-index: 1;
+}
+
+/* Vignette ring */
+.landing__overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 80% at 50% 50%, transparent 40%, rgba(0,0,0,0.55) 100%);
+}
+
+/* â”€â”€ Content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.content {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 1.5rem;
+  gap: 0;
+  color: #fff;
+}
+
+/* Shield crest */
+.crest {
+  width: 84px;
+  height: 84px;
+  border-radius: 20px 20px 48% 48% / 20px 20px 38% 38%;
+  background: linear-gradient(150deg, #3a7022 0%, #4d8b31 55%, #62a83e 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.4rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.15),
+    0 0 48px rgba(77,139,49,0.55),
+    0 16px 48px rgba(0,0,0,0.5);
+  margin-bottom: 1.5rem;
+  animation: drop-in 0.7s cubic-bezier(0.34,1.4,0.64,1) both;
+}
+
+@keyframes drop-in {
+  from { opacity: 0; transform: scale(0.5) translateY(-20px); }
+  to   { opacity: 1; transform: scale(1)   translateY(0);     }
+}
+
+/* Brand name */
+.brand-name {
+  font-size: clamp(2.8rem, 11vw, 5.5rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin-bottom: 0.45rem;
+  animation: fade-up 0.55s 0.15s ease-out both;
+}
+
+.brand-name .id {
+  color: #ffc800;
+  font-style: italic;
+}
+
+/* Subtitle */
+.subtitle {
+  font-size: clamp(0.9rem, 2.8vw, 1.1rem);
+  font-weight: 400;
+  color: rgba(255,255,255,0.65);
+  letter-spacing: 0.02em;
+  margin-bottom: 2.5rem;
+  animation: fade-up 0.55s 0.25s ease-out both;
+}
+
+/* Buttons */
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 300px;
+  animation: fade-up 0.55s 0.4s ease-out both;
+}
+
+.btn-main {
+  width: 100%;
+  padding: 0.95rem 1.75rem;
+  font-size: 1rem;
+  font-weight: 700;
+  font-family: inherit;
+  color: #13151d;
+  background: linear-gradient(135deg, #ffc800 0%, #ffd740 100%);
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  text-decoration: none;
+  letter-spacing: 0.01em;
+  box-shadow: 0 0 0 1px rgba(255,215,64,0.3), 0 8px 28px rgba(255,200,0,0.38);
+  transition: transform 0.2s, box-shadow 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-main::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, transparent 55%);
+}
+
+.btn-main:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 1px rgba(255,215,64,0.45), 0 14px 40px rgba(255,200,0,0.48);
+}
+
+.btn-main:active { transform: scale(0.98); }
+
+.btn-ghost {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgba(255,255,255,0.55);
+  text-decoration: none;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.2);
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.btn-ghost:hover {
+  color: #fff;
+  border-color: rgba(255,255,255,0.55);
+}
+
+/* â”€â”€ Bottom caption â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+.caption {
+  position: absolute;
+  bottom: 1.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.25);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: fade-up 0.55s 0.6s ease-out both;
+}
+
+/* â”€â”€ Animations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* â”€â”€ Mobile safe area â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .caption { bottom: calc(1.75rem + env(safe-area-inset-bottom)); }
+}
+
+

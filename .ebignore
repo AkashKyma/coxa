@@ -1,0 +1,16 @@
+.git
+.github
+*.md
+docs/
+apps/*/dist
+apps/club-auth/dist
+apps/club-dashboard/dist
+apps/fan-auth/dist
+apps/fan-dashboard/dist
+apps/pos-app/dist
+.env
+.env.*
+!.env.example
+node_modules/.cache
+**/.cursor
+**/terminals

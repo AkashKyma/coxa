@@ -1,0 +1,9 @@
+- generic [active] [ref=f8e1]:
+  - generic [ref=f8e3]:
+    - text: PostHog dangerously running in
+    - code [ref=f8e5]: PRODUCTION
+    - text: mode without TLS! Use a valid TLS certificate and route to
+    - code [ref=f8e6]: https://
+    - text: .
+  - status "Loading PostHog" [ref=f8e8]
+  - textbox [ref=f8e10]

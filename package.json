@@ -1,0 +1,47 @@
+{
+  "name": "coxa",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fan Operating System — MERN stack monorepo",
+  "workspaces": [
+    "packages/*",
+    "backend",
+    "apps/club-auth",
+    "apps/club-dashboard",
+    "apps/fan-auth",
+    "apps/fan-dashboard",
+    "apps/fan-landing",
+    "apps/fanbox-dashboard",
+    "apps/pos-app"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,club-auth,club-dash,fanbox-dash,fan-auth,fan-dash,fan-landing,pos -c green,cyan,blue,violet,yellow,white,gray \"npm run dev --workspace=coxa-backend\" \"npm run dev --workspace=club-auth\" \"npm run dev --workspace=club-dashboard\" \"npm run dev --workspace=fanbox-dashboard\" \"npm run dev --workspace=fan-auth\" \"npm run dev --workspace=fan-dashboard\" \"npm run dev --workspace=fan-landing\" \"npm run dev --workspace=pos-app\"",
+    "dev:backend": "npm run dev --workspace=coxa-backend",
+    "dev:club-auth": "npm run dev --workspace=club-auth",
+    "dev:club-dashboard": "npm run dev --workspace=club-dashboard",
+    "dev:fanbox-dashboard": "npm run dev --workspace=fanbox-dashboard",
+    "dev:fan-auth": "npm run dev --workspace=fan-auth",
+    "dev:fan-dashboard": "npm run dev --workspace=fan-dashboard",
+    "dev:fan-landing": "npm run dev --workspace=fan-landing",
+    "dev:pos-app": "npm run dev --workspace=pos-app",
+    "seed": "npm run seed --workspace=coxa-backend",
+    "build": "npm run build --workspace=club-auth && npm run build --workspace=club-dashboard && npm run build --workspace=fan-auth && npm run build --workspace=fan-dashboard && npm run build --workspace=fan-landing",
+    "build:club-auth": "npm run build --workspace=club-auth",
+    "build:club-dashboard": "npm run build --workspace=club-dashboard",
+    "build:fan-auth": "npm run build --workspace=fan-auth",
+    "build:fan-dashboard": "npm run build --workspace=fan-dashboard",
+    "build:fanbox-dashboard": "npm run build --workspace=fanbox-dashboard",
+    "build:pos-app": "npm run build --workspace=pos-app",
+    "start:backend": "npm run start --workspace=coxa-backend",
+    "start:worker": "node backend/src/worker.js",
+    "mcp": "npm run start:mcp --workspace=coxa-backend"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "docx": "^9.7.1",
+    "playwright": "^1.60.0"
+  }
+}

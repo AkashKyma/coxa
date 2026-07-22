@@ -1,0 +1,1061 @@
+openapi: "3.1.0"
+info:
+  title: Coxa POS Integration API
+  version: "0.2.1"
+  description: |
+    Public API for Point-of-Sale integrations with the Coxa Fan OS.
+    Covers retail sales, ticketing, QR validation, membership, and fan lookup.
+
+    Data written through these endpoints feeds the **FanBox Business** dashboard
+    (`fanbox-dashboard` → Business section). FanBox reads aggregated KPIs from the
+    same tenant database — there is no separate upload step for business metrics.
+
+    ## Authentication
+    Call POST /auth/login to obtain a Bearer JWT, then pass it as
+    `Authorization: Bearer <token>` on every subsequent request.
+
+    Membership join/renew endpoints require a **fan JWT** (fan-authenticated session),
+    not a POS operator token. Use fan lookup first, then authenticate the fan or
+    route enrollment through the fan app / membership portal.
+
+    ## Tenant Context
+    Every request must include the `x-tenant-id` header (your club identifier,
+    e.g. `coxa-club-001`). All writes must use the same tenantId or FanBox KPIs
+    will stay at zero.
+
+    ## Rate Limits
+    Login: 30 requests / 15 min | Ticket ops: 60 requests / min | Default: 500 requests / min.
+
+    ## FanBox Business — required write APIs by tab
+
+    FanBox Business tabs are powered by operational data in MongoDB. Call the
+    **Required write APIs** below from your POS, box office, gate scanner, fan shop,
+    or membership kiosk. FanBox then aggregates via `GET /api/v1/fanbox/analytics/business/{source}`
+    (FanBox staff auth — not part of this public POS spec).
+
+    | FanBox tab | Data source (internal) | Required write APIs (this doc) | KPIs populated |
+    |------------|------------------------|--------------------------------|----------------|
+    | **Membership** | `FanMembership`, `MembershipTransaction` | GET /membership/plans · POST /membership/join · POST /membership/renew | active_memberships, membership_revenue_cents, membership_transactions |
+    | **Tickets** | `Ticket` | GET /ticketing/events · GET /ticketing/events/{id}/ticket-products · POST /ticketing/tickets/issue | tickets_issued, tickets_used, ticket_revenue_cents |
+    | **Access** | `AttendanceRecord` | POST /ticketing/entitlements/validate (`markUsed: true`) · POST /ticketing/check-ins · POST /ticketing/events/{id}/record-no-shows | access_records, access_present, access_checked_in_only, access_no_show |
+    | **Stores** | `Sale` (`channel: pos`, store location) | GET /retail/locations · GET /retail/catalog · POST /retail/sales (location `type: store`) | stores_orders, stores_revenue_cents |
+    | **E-Commerce** | `Sale` (`channel: fan_shop`) | GET /retail/shop/catalog · POST /retail/shop/orders | ecommerce_orders, ecommerce_revenue_cents |
+    | **Coxa Foods** | `Sale` (`channel: pos`, F&B location) | GET /retail/locations · GET /retail/catalog · POST /retail/sales (location `type: fnb_stand`) | coxa-foods_orders, coxa-foods_revenue_cents |
+    | **Official App** | — (stub) | *Not available via POS API yet* | active_users, events, conversions (always 0 until integration) |
+    | **Coxa Prime TV (OTT)** | — (stub) | *Not available via POS API yet* | same as above |
+    | **Coxa Run** | — (stub) | *Not available via POS API yet* | same as above |
+    | **Manto** | — (stub) | *Not available via POS API yet* | same as above |
+
+    ### Prerequisites (all tabs)
+    1. **Fan profiles** — link transactions with `fanEmail` or `fanProfileId` from GET /cdp/profiles/search.
+    2. **Completed sales** — POST /retail/sales creates `status: completed` records counted in Business reports.
+    3. **Date range** — FanBox filters by `createdAt` / `issuedAt` / `recordedAt`; use current timestamps on writes.
+
+    ### Notes
+    - **Stores vs Coxa Foods**: both use `channel: pos` today; use location `type` (`store` vs `fnb_stand`) when posting sales. FanBox currently aggregates all `pos` sales for both tabs until location-type filtering is added.
+    - **Access — gate entry**: POST /ticketing/entitlements/validate with `markUsed: true` creates an `AttendanceRecord` with status `present` and marks the ticket used.
+    - **Access — member check-in**: POST /ticketing/check-ins creates `checked_in_only` attendance for members without a ticket scan.
+    - **Access — no-shows**: POST /ticketing/events/{id}/record-no-shows after an event creates `no_show` records for unused issued tickets.
+servers:
+  - url: /api/v1
+    description: Current API version
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT obtained from POST /auth/login
+    tenantHeader:
+      type: apiKey
+      in: header
+      name: x-tenant-id
+      description: Your club tenant identifier (e.g. coxa-club-001)
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: locationId and lines are required
+    SaleLine:
+      type: object
+      properties:
+        skuId:
+          type: string
+        skuCode:
+          type: string
+        productName:
+          type: string
+        qty:
+          type: integer
+        unitPriceCents:
+          type: integer
+        lineTotalCents:
+          type: integer
+    Sale:
+      type: object
+      properties:
+        _id:
+          type: string
+        saleNumber:
+          type: string
+        locationId:
+          type: string
+        lines:
+          type: array
+          items:
+            ref: "#/components/schemas/SaleLine"
+        totalCents:
+          type: integer
+        paymentMethod:
+          type: string
+          enum: [cash, card, pix, voucher, stub]
+        status:
+          type: string
+          enum: [completed, voided]
+        channel:
+          type: string
+          enum: [pos, fan_shop, box_office]
+        createdAt:
+          type: string
+          format: date-time
+    SaleLineQr:
+      type: object
+      properties:
+        qrToken:
+          type: string
+        unitIndex:
+          type: integer
+        status:
+          type: string
+          enum: [issued, redeemed, voided]
+        redeemedAt:
+          type: string
+          format: date-time
+    Ticket:
+      type: object
+      properties:
+        _id:
+          type: string
+        matchEventId:
+          type: string
+        fanProfileId:
+          type: string
+        qrToken:
+          type: string
+        seat:
+          type: string
+        status:
+          type: string
+          enum: [issued, used, cancelled]
+    FanProfile:
+      type: object
+      properties:
+        _id:
+          type: string
+        fanId:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        memberId:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+
+security:
+  - bearerAuth: []
+  - tenantHeader: []
+
+tags:
+  - name: Auth
+    description: POS operator authentication
+  - name: Retail
+    description: Product catalog, in-store POS sales, and QR redemption (FanBox Stores & Coxa Foods)
+  - name: E-Commerce
+    description: Online fan shop orders (FanBox E-Commerce tab)
+  - name: Membership
+    description: Membership plans, join, and renew (FanBox Membership tab)
+  - name: Ticketing
+    description: Match events, box-office ticket issuance, gate QR validation, and member check-in (FanBox Tickets & Access tabs)
+  - name: Fans
+    description: Fan profile lookup for linking sales and tickets
+  - name: FanBox Business
+    description: See info description for the full tab → API mapping matrix
+  - name: Utility
+    description: Service health check
+
+paths:
+
+  # ── Auth ────────────────────────────────────────
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: POS operator login
+      description: Authenticates a staff user and returns a Bearer JWT. Use the token on all subsequent calls.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: cashier@clubfc.com
+                password:
+                  type: string
+                  format: password
+                  example: "••••••••"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      token:
+                        type: string
+                        description: Bearer JWT — pass as Authorization header
+                      user:
+                        type: object
+                        properties:
+                          fullName:
+                            type: string
+                          email:
+                            type: string
+                      club:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          _id:
+                            type: string
+                      membership:
+                        type: object
+                        properties:
+                          role:
+                            type: string
+                            example: cashier
+        "401":
+          description: Invalid email or password
+          content:
+            application/json:
+              schema:
+                ref: "#/components/schemas/Error"
+        "403":
+          description: Account inactive or no club assigned
+
+  # ── Retail ──────────────────────────────────────
+  /retail/locations:
+    get:
+      tags: [Retail]
+      summary: List POS locations
+      description: Returns all active retail and F&B locations. Use the location _id when creating a sale.
+      responses:
+        "200":
+          description: List of locations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        _id:
+                          type: string
+                        code:
+                          type: string
+                          example: STORE-01
+                        name:
+                          type: string
+                          example: Main Store
+                        type:
+                          type: string
+                          enum: [warehouse, store, online, fnb_stand]
+                          description: Use store for retail POS; fnb_stand for F&B / Coxa Foods
+
+  /retail/catalog:
+    get:
+      tags: [Retail]
+      summary: Product catalog
+      description: Returns active SKUs with prices. Pass locationId to get location-specific stock levels.
+      parameters:
+        - name: locationId
+          in: query
+          schema:
+            type: string
+          description: Limit results to a specific POS location
+      responses:
+        "200":
+          description: Product catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sku:
+                          type: object
+                          properties:
+                            _id:
+                              type: string
+                            skuCode:
+                              type: string
+                            priceCents:
+                              type: integer
+                              example: 2500
+                        product:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            kind:
+                              type: string
+                              enum: [merchandise, menu_item, ingredient]
+
+  /retail/sales:
+    post:
+      tags: [Retail, FanBox Business]
+      summary: Create sale
+      description: |
+        Completes a retail sale at the POS.
+        Deducts stock from the location, publishes a CDP event, and enqueues per-unit QR code generation.
+        After the response, call GET /retail/sales/{saleId}/qr-codes to retrieve the QR tokens.
+
+        **FanBox Business:** feeds **Stores** (location `type: store`) and **Coxa Foods**
+        (location `type: fnb_stand`). Sale `channel` is always `pos`.
+      x-fanbox-tabs: [stores, coxa-foods]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [locationId, lines]
+              properties:
+                locationId:
+                  type: string
+                  description: Location _id from GET /retail/locations
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [skuId, qty]
+                    properties:
+                      skuId:
+                        type: string
+                        description: SKU _id from GET /retail/catalog
+                      qty:
+                        type: integer
+                        minimum: 1
+                        example: 2
+                paymentMethod:
+                  type: string
+                  enum: [cash, card, pix, voucher, stub]
+                  default: cash
+                fanEmail:
+                  type: string
+                  format: email
+                  description: Optional — links this sale to a fan profile for loyalty tracking
+                fanProfileId:
+                  type: string
+                  description: Optional — alternative to fanEmail
+      responses:
+        "201":
+          description: Sale created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    ref: "#/components/schemas/Sale"
+        "400":
+          description: Missing locationId or lines
+          content:
+            application/json:
+              schema:
+                ref: "#/components/schemas/Error"
+        "404":
+          description: Location or SKU not found
+
+  /retail/sales/{saleId}/qr-codes:
+    get:
+      tags: [Retail]
+      summary: Get sale QR codes
+      description: Returns per-unit QR tokens for a completed sale grouped by sale line. Each physical item has its own unique token.
+      parameters:
+        - name: saleId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Sale _id from POST /retail/sales response
+      responses:
+        "200":
+          description: QR codes grouped by line
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      saleId:
+                        type: string
+                      saleNumber:
+                        type: string
+                      totalTokens:
+                        type: integer
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            saleLineIndex:
+                              type: integer
+                            productName:
+                              type: string
+                            tokens:
+                              type: array
+                              items:
+                                ref: "#/components/schemas/SaleLineQr"
+        "404":
+          description: Sale not found
+
+  /retail/sale-qr/redeem:
+    post:
+      tags: [Retail]
+      summary: Redeem product QR
+      description: Marks a single per-unit QR token as redeemed when the customer collects their item.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qrToken]
+              properties:
+                qrToken:
+                  type: string
+                  description: The token string from the QR code
+      responses:
+        "200":
+          description: QR redeemed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      qrToken:
+                        type: string
+                      status:
+                        type: string
+                        example: redeemed
+                      productName:
+                        type: string
+                      redeemedAt:
+                        type: string
+                        format: date-time
+        "404":
+          description: QR token not found
+        "409":
+          description: Already redeemed or voided
+
+  # ── Ticketing ──────────────────────────────────
+  /ticketing/events:
+    get:
+      tags: [Ticketing]
+      summary: List upcoming events
+      description: Returns match events available for ticket sales. Filter with upcoming=true for box office use.
+      security: []
+      parameters:
+        - name: upcoming
+          in: query
+          schema:
+            type: boolean
+          description: true — only return future events
+          example: true
+      responses:
+        "200":
+          description: List of match events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        _id:
+                          type: string
+                        name:
+                          type: string
+                          example: Club FC vs Rival FC
+                        homeTeam:
+                          type: string
+                        awayTeam:
+                          type: string
+                        matchDate:
+                          type: string
+                          format: date-time
+                        status:
+                          type: string
+                          enum: [scheduled, on_sale, sold_out, cancelled, completed]
+
+  /ticketing/events/{id}/ticket-products:
+    get:
+      tags: [Ticketing]
+      summary: List ticket products for an event
+      description: Returns available ticket tiers/sections for an event. Use ticketProductId when issuing tickets.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Match event _id
+      responses:
+        "200":
+          description: Ticket products (tiers/sections)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        _id:
+                          type: string
+                        name:
+                          type: string
+                          example: Section A - General
+                        priceCents:
+                          type: integer
+                          example: 5000
+                        availableQty:
+                          type: integer
+
+  /ticketing/tickets/issue:
+    post:
+      tags: [Ticketing, FanBox Business]
+      summary: Issue tickets (box office)
+      description: |
+        Issues match tickets at the box office.
+        Pass matchEventId + ticketProductId + qty for direct issuance.
+        Optionally link to a fan via fanEmail or fanProfileId.
+        Idempotent — passing the same idempotencyKey returns the original tickets.
+
+        **FanBox Business:** feeds **Tickets** tab (`tickets_issued`, `ticket_revenue_cents`).
+        Ticket **used** counts come from gate validation with `markUsed: true`.
+      x-fanbox-tabs: [tickets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [matchEventId, ticketProductId]
+              properties:
+                matchEventId:
+                  type: string
+                  description: Event _id from GET /ticketing/events
+                ticketProductId:
+                  type: string
+                  description: Ticket product _id from GET /ticketing/events/{id}/ticket-products
+                qty:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                fanEmail:
+                  type: string
+                  format: email
+                  description: Optional — links tickets to fan profile
+                fanProfileId:
+                  type: string
+                  description: Optional — alternative to fanEmail
+                paymentMethod:
+                  type: string
+                  enum: [cash, card, pix, stub]
+                  default: cash
+                channel:
+                  type: string
+                  enum: [box_office, fan_app]
+                  default: box_office
+                idempotencyKey:
+                  type: string
+                  description: Deduplication key — same key returns the original result
+      responses:
+        "201":
+          description: Tickets issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      ref: "#/components/schemas/Ticket"
+                  duplicate:
+                    type: boolean
+        "200":
+          description: Duplicate request — original tickets returned
+        "400":
+          description: Validation error
+
+  /ticketing/entitlements/validate:
+    post:
+      tags: [Ticketing, FanBox Business]
+      summary: Validate entry QR at the gate
+      description: |
+        Validates a ticket QR token scanned at the gate.
+        Set markUsed: true to mark the entitlement as used (one-time entry).
+        Returns validation result with fan and event info.
+
+        **FanBox Business:** with `markUsed: true`, creates an `AttendanceRecord`
+        (status `present`) and increments **Tickets** (`tickets_used`) and **Access**
+        (`access_records`, `access_present`) KPIs.
+      x-fanbox-tabs: [tickets, access]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [qrToken]
+              properties:
+                qrToken:
+                  type: string
+                  description: The token string from the scanned QR code
+                matchEventId:
+                  type: string
+                  description: Current match event ID for validation context
+                markUsed:
+                  type: boolean
+                  default: false
+                  description: Set true to mark as used on successful validation
+                gateId:
+                  type: string
+                  description: Gate identifier for audit trail
+                deviceId:
+                  type: string
+                  description: Scanner device identifier
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      valid:
+                        type: boolean
+                      status:
+                        type: string
+                        enum: [valid, already_used, invalid, expired]
+                      fan:
+                        type: object
+                      event:
+                        type: object
+        "404":
+          description: QR token not found
+        "409":
+          description: Already used
+
+  /ticketing/check-ins:
+    post:
+      tags: [Ticketing, FanBox Business]
+      summary: Member priority check-in
+      description: |
+        Records a member check-in for a match event (priority window / member entrance).
+        Creates an `AttendanceRecord` with status `checked_in_only` and a member entitlement.
+
+        **FanBox Business:** feeds **Access** tab (`access_records`, `access_checked_in_only`).
+
+        Requires an active `FanMembership` and an open check-in window for the event.
+      x-fanbox-tabs: [access]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [matchEventId]
+              properties:
+                matchEventId:
+                  type: string
+                  description: Event _id from GET /ticketing/events
+                checkInWindowId:
+                  type: string
+                  description: Window _id from GET /ticketing/check-ins/windows/{matchEventId}
+                fanEmail:
+                  type: string
+                  format: email
+                fanProfileId:
+                  type: string
+                memberId:
+                  type: string
+                  description: Fan member number (alternative lookup)
+                idempotencyKey:
+                  type: string
+                  description: Deduplication key — same key returns the original check-in
+      responses:
+        "201":
+          description: Check-in recorded
+        "200":
+          description: Duplicate idempotency key — original check-in returned
+        "404":
+          description: Fan or window not found
+        "409":
+          description: Already checked in or capacity full
+
+  /ticketing/check-ins/windows/{matchEventId}:
+    get:
+      tags: [Ticketing, FanBox Business]
+      summary: List check-in windows for an event
+      description: |
+        Returns configured member check-in windows for a match.
+        Use before POST /ticketing/check-ins to obtain `checkInWindowId`.
+      x-fanbox-tabs: [access]
+      parameters:
+        - name: matchEventId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Check-in windows
+
+  /ticketing/check-ins/windows/{matchEventId}/eligible:
+    get:
+      tags: [Ticketing, FanBox Business]
+      summary: Eligible check-in windows for a fan
+      description: |
+        Returns which check-in windows a fan can use based on membership tier and fan score.
+        Call before POST /ticketing/check-ins at the member entrance kiosk.
+      x-fanbox-tabs: [access]
+      parameters:
+        - name: matchEventId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: fanEmail
+          in: query
+          schema:
+            type: string
+            format: email
+        - name: fanProfileId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Eligible windows for this fan
+        "404":
+          description: Fan not found
+
+  /ticketing/events/{id}/record-no-shows:
+    post:
+      tags: [Ticketing, FanBox Business]
+      summary: Record no-shows after event
+      description: |
+        Creates `AttendanceRecord` entries with status `no_show` for issued tickets
+        that were never scanned at the gate. Typically run after event completion.
+
+        **FanBox Business:** feeds **Access** tab (`access_no_show`).
+      x-fanbox-tabs: [access]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Match event _id
+      responses:
+        "200":
+          description: No-show records created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+
+  /retail/shop/catalog:
+    get:
+      tags: [E-Commerce, FanBox Business]
+      summary: Online shop catalog
+      description: |
+        Returns SKUs available on the online fan shop with stock from the online location.
+
+        **FanBox Business:** prerequisite for **E-Commerce** orders.
+      x-fanbox-tabs: [ecommerce]
+      responses:
+        "200":
+          description: Shop catalog with online location
+        "503":
+          description: Online shop location not configured
+
+  /retail/shop/orders:
+    post:
+      tags: [E-Commerce, FanBox Business]
+      summary: Create online shop order
+      description: |
+        Completes a fan shop order. Creates a `Sale` with `channel: fan_shop`.
+
+        **FanBox Business:** feeds **E-Commerce** tab (`ecommerce_orders`, `ecommerce_revenue_cents`).
+
+        Requires fan context via `fanEmail`, `fanProfileId`, or authenticated fan session.
+      x-fanbox-tabs: [ecommerce]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lines]
+              properties:
+                lines:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    required: [skuId, qty]
+                    properties:
+                      skuId:
+                        type: string
+                      qty:
+                        type: integer
+                        minimum: 1
+                paymentMethod:
+                  type: string
+                  enum: [cash, card, pix, stub]
+                  default: stub
+                fanEmail:
+                  type: string
+                  format: email
+                fanProfileId:
+                  type: string
+      responses:
+        "201":
+          description: Order created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      sale:
+                        ref: "#/components/schemas/Sale"
+        "400":
+          description: Validation error
+        "503":
+          description: Online shop not configured
+
+  /membership/plans:
+    get:
+      tags: [Membership, FanBox Business]
+      summary: List membership plans
+      description: |
+        Returns active membership plans (planCode, pricing, benefits).
+        Use `planCode` when calling POST /membership/join or /membership/renew.
+
+        **FanBox Business:** prerequisite for **Membership** enrollment flows.
+      x-fanbox-tabs: [membership]
+      security: []
+      responses:
+        "200":
+          description: Active membership plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        planCode:
+                          type: string
+                          example: COXA_DOIDO
+                        name:
+                          type: string
+                        monthlyPriceCents:
+                          type: integer
+                        annualPriceCents:
+                          type: integer
+
+  /membership/join:
+    post:
+      tags: [Membership, FanBox Business]
+      summary: Join membership plan
+      description: |
+        Creates an active `FanMembership` and a completed `MembershipTransaction`.
+
+        **FanBox Business:** feeds **Membership** tab (active count + revenue + transaction count).
+
+        **Auth:** requires a **fan JWT** (fan-authenticated user linked to a FanProfile),
+        not a POS operator token. For box-office enrollment, authenticate the fan first
+        or delegate to the fan mobile app / membership portal.
+      x-fanbox-tabs: [membership]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planCode]
+              properties:
+                planCode:
+                  type: string
+                  description: From GET /membership/plans
+                paymentFrequency:
+                  type: string
+                  enum: [monthly, annual]
+                  default: monthly
+                paymentMethod:
+                  type: string
+                  enum: [pix, card, boleto, stub]
+                  default: stub
+                idempotencyKey:
+                  type: string
+      responses:
+        "201":
+          description: Membership created
+        "404":
+          description: Fan profile or plan not found
+
+  /membership/renew:
+    post:
+      tags: [Membership, FanBox Business]
+      summary: Renew active membership
+      description: |
+        Renews the fan's active membership and creates a completed `MembershipTransaction`.
+
+        **FanBox Business:** increments **Membership** revenue and transaction KPIs.
+
+        **Auth:** requires a **fan JWT**.
+      x-fanbox-tabs: [membership]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paymentFrequency:
+                  type: string
+                  enum: [monthly, annual]
+                paymentMethod:
+                  type: string
+                  enum: [pix, card, boleto, stub]
+                idempotencyKey:
+                  type: string
+      responses:
+        "201":
+          description: Membership renewed
+        "404":
+          description: No active membership found
+
+  # ── Fans ────────────────────────────────────────
+  /cdp/profiles/search:
+    get:
+      tags: [Fans, FanBox Business]
+      summary: Search fan profiles
+      description: |
+        Find a fan by email or name to link sales and tickets to their profile.
+
+        **FanBox Business:** prerequisite for all tabs — pass `fanEmail` or
+        `fanProfileId` on sales, tickets, and membership calls for accurate KPIs.
+      x-fanbox-tabs: [membership, tickets, access, stores, ecommerce, coxa-foods]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Email address or partial name
+          example: john@fan.com
+      responses:
+        "200":
+          description: Matching fan profiles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      ref: "#/components/schemas/FanProfile"
+                  total:
+                    type: integer
+
+  # ── Utility ─────────────────────────────────────
+  /health:
+    get:
+      tags: [Utility]
+      summary: Health check
+      description: Returns 200 when the service is up. Used by load balancer health probes.
+      security: []
+      responses:
+        "200":
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: coxa-backend
+                  version:
+                    type: string
+                    example: "0.2.0"

@@ -1,0 +1,146 @@
+{
+  "workspaceId": "coxa-local",
+  "sources": [
+    {
+      "id": "coxa-web-source",
+      "name": "Coxa Web (JS SDK)",
+      "writeKey": "rws_2cb392007d9b69839f418856bfa09a7d2e296419",
+      "enabled": true,
+      "workspaceId": "coxa-local",
+      "config": {},
+      "sourceDefinition": {
+        "id": "javascript",
+        "name": "javascript",
+        "category": "web"
+      },
+      "destinations": [
+        {
+          "id": "coxa-posthog-dest",
+          "name": "PostHog Analytics",
+          "enabled": true,
+          "isProcessorEnabled": true,
+          "config": {
+            "teamApiKey": "phc_A4Gnk9ev6nQJ8TfXoAq48DusKakeCBpgJNagZbp9ek3b",
+            "yourInstance": "http://posthog-proxy:8000"
+          },
+          "destinationDefinition": {
+            "id": "posthog",
+            "name": "POSTHOG",
+            "displayName": "PostHog"
+          },
+          "transformations": []
+        }
+      ]
+    },
+    {
+      "id": "coxa-backend-source",
+      "name": "Coxa Backend (Node SDK)",
+      "writeKey": "rbs_36b0b76d1de95af77a05ca30fc46328cf70b07af",
+      "enabled": true,
+      "workspaceId": "coxa-local",
+      "config": {},
+      "sourceDefinition": {
+        "id": "node",
+        "name": "node",
+        "category": "server"
+      },
+      "destinations": [
+        {
+          "id": "coxa-posthog-dest",
+          "name": "PostHog Analytics",
+          "enabled": true,
+          "isProcessorEnabled": true,
+          "config": {
+            "teamApiKey": "phc_A4Gnk9ev6nQJ8TfXoAq48DusKakeCBpgJNagZbp9ek3b",
+            "yourInstance": "http://posthog-proxy:8000"
+          },
+          "destinationDefinition": {
+            "id": "posthog",
+            "name": "POSTHOG",
+            "displayName": "PostHog"
+          },
+          "transformations": []
+        }
+      ]
+    },
+    {
+      "id": "coxa-mobile-source",
+      "name": "Coxa Mobile (React Native)",
+      "writeKey": "COXA_MOBILE_WRITE_KEY_CHANGE_ME",
+      "enabled": true,
+      "workspaceId": "coxa-local",
+      "config": {},
+      "sourceDefinition": {
+        "id": "reactnative",
+        "name": "reactnative",
+        "category": "mobile"
+      },
+      "destinations": [
+        {
+          "id": "coxa-posthog-dest",
+          "name": "PostHog Analytics",
+          "enabled": true,
+          "isProcessorEnabled": true,
+          "config": {
+            "teamApiKey": "phc_A4Gnk9ev6nQJ8TfXoAq48DusKakeCBpgJNagZbp9ek3b",
+            "yourInstance": "http://posthog-proxy:8000"
+          },
+          "destinationDefinition": {
+            "id": "posthog",
+            "name": "POSTHOG",
+            "displayName": "PostHog"
+          },
+          "transformations": []
+        }
+      ]
+    }
+  ],
+  "libraries": [],
+  "destinations": [
+    {
+      "id": "coxa-webhook-dest",
+      "name": "Coxa Backend Webhook",
+      "enabled": true,
+      "destinationDefinitionId": "webhook",
+      "config": {
+        "webhookUrl": "http://host.docker.internal:5000/api/cdp/rudderstack-webhook",
+        "webhookMethod": "POST",
+        "headers": [
+          { "from": "X-RudderStack-Secret", "to": "COXA_RUDDERSTACK_WEBHOOK_SECRET_CHANGE_ME" }
+        ]
+      },
+      "sources": ["coxa-web-source", "coxa-backend-source", "coxa-mobile-source"]
+    },
+    {
+      "id": "coxa-posthog-dest",
+      "name": "PostHog Analytics",
+      "enabled": true,
+      "destinationDefinitionId": "posthog",
+      "config": {
+        "teamApiKey": "phc_A4Gnk9ev6nQJ8TfXoAq48DusKakeCBpgJNagZbp9ek3b",
+        "yourInstance": "https://posthog.service.coxa.live"
+      },
+      "sources": ["coxa-web-source", "coxa-mobile-source"]
+    },
+    {
+      "id": "coxa-clickhouse-dest",
+      "name": "Coxa ClickHouse Warehouse",
+      "enabled": true,
+      "destinationDefinitionId": "clickhouse",
+      "config": {
+        "host": "host.docker.internal",
+        "port": "9000",
+        "database": "coxa",
+        "user": "coxa",
+        "password": "coxa_dev_password",
+        "bucketProvider": "none",
+        "syncFrequency": "30",
+        "syncStartAt": "00:00",
+        "namespace": "coxa",
+        "useSSL": false,
+        "enableSSE": false
+      },
+      "sources": ["coxa-web-source", "coxa-backend-source", "coxa-mobile-source"]
+    }
+  ]
+}

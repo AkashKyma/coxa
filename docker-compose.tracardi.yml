@@ -1,0 +1,110 @@
+version: "3.9"
+
+# ─── Tracardi CDP — Phase 3 ───────────────────────────────────────────────────
+# Tracardi provides real-time audience profiles, workflow triggers, and
+# audience exports. It receives events via the RudderStack webhook bridge.
+#
+# Run with:
+#   docker compose -f docker-compose.tracardi.yml --env-file .env.cdp up -d
+#
+# HTTPS domains (via Caddy in docker-compose.cdp.yml):
+#   GUI:  https://tracardi.service.coxa.live  → tracardi-gui:8787
+#   API:  https://tracardi-api.service.coxa.live → tracardi (port 80 internal)
+
+services:
+  tracardi-es:
+    image: elasticsearch:8.11.1
+    container_name: tracardi-es
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - tracardi_esdata:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+    restart: unless-stopped
+
+  tracardi-redis:
+    image: redis:7-alpine
+    container_name: tracardi-redis
+    volumes:
+      - tracardi_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 5
+    networks:
+      - default
+      - coxa_services
+    restart: unless-stopped
+
+  tracardi:
+    image: tracardi/tracardi-api:0.8.2
+    container_name: tracardi-api
+    depends_on:
+      tracardi-es:
+        condition: service_healthy
+      tracardi-redis:
+        condition: service_healthy
+    environment:
+      ELASTIC_HOST: http://tracardi-es:9200
+      # Use explicit no-auth format — prevents aioredis from parsing hostname as username
+      REDIS_HOST: "redis://:@tracardi-redis:6379"
+      TRACARDI_API_DOCS: "no"
+      TRACARDI_MULTI_TENANT: "no"
+    ports:
+      - "8686:80"   # kept for direct access; Caddy proxies via tracardi-api.service.coxa.live
+    networks:
+      - default
+      - coxa_services           # shared with docker-compose.cdp.yml so Caddy can reach this container
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/healthcheck || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
+
+  tracardi-worker:
+    image: tracardi/tracardi-api:0.8.2
+    container_name: tracardi-worker
+    command: ["python", "-m", "app.worker"]
+    depends_on:
+      tracardi:
+        condition: service_healthy
+    environment:
+      ELASTIC_HOST: http://tracardi-es:9200
+      REDIS_HOST: "redis://:@tracardi-redis:6379"
+      TRACARDI_MULTI_TENANT: "no"
+    restart: unless-stopped
+
+  tracardi-gui:
+    image: tracardi/tracardi-gui:0.8.2
+    container_name: tracardi-gui
+    depends_on:
+      tracardi:
+        condition: service_healthy
+    environment:
+      # Point the GUI at the HTTPS API endpoint so the browser can reach it
+      API_URL: https://tracardi-api.service.coxa.live
+      MULTI_TENANT: "false"
+    ports:
+      - "8787:80"   # kept for direct access; Caddy proxies via tracardi.service.coxa.live
+    networks:
+      - default
+      - coxa_services           # shared with docker-compose.cdp.yml so Caddy can reach this container
+    restart: unless-stopped
+
+volumes:
+  tracardi_esdata:
+  tracardi_redis:
+
+networks:
+  coxa_services:
+    external: true              # created by docker-compose.cdp.yml — must start CDP stack first
+

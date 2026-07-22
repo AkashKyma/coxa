@@ -1,0 +1,46 @@
+cubes:
+  - name: Sales
+    sql_table: coxa.mv_daily_sales
+    description: Daily POS and e-commerce sales aggregates
+
+    dimensions:
+      - name: tenantId
+        sql: tenant_id
+        type: string
+        primary_key: true
+
+      - name: saleDate
+        sql: sale_date
+        type: time
+
+      - name: channel
+        sql: channel
+        type: string
+
+    measures:
+      - name: totalOrders
+        sql: orders
+        type: sum
+        description: Total POS + online orders
+
+      - name: totalRevenueCents
+        sql: revenue_cents
+        type: sum
+        description: Total gross revenue (cents)
+        format: currency
+
+      - name: totalUnitsSold
+        sql: units_sold
+        type: sum
+        description: Total units sold
+
+      - name: avgOrderValueCents
+        sql: "toFloat64(sum(revenue_cents)) / nullIf(sum(orders), 0)"
+        type: number
+        description: Average order value in cents
+        format: currency
+
+      - name: avgItemsPerOrder
+        sql: "toFloat64(sum(units_sold)) / nullIf(sum(orders), 0)"
+        type: number
+        description: Average items per order

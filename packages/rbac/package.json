@@ -1,0 +1,14 @@
+{
+  "name": "@coxa/rbac",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared role registry and RBAC helpers (MERN — JavaScript ESM)",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "lint": "echo \"lint not configured\""
+  }
+}

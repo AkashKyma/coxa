@@ -1,0 +1,39 @@
+- generic [ref=f1e1]:
+  - generic [ref=f1e3]:
+    - text: PostHog dangerously running in
+    - code [ref=f1e5]: PRODUCTION
+    - text: mode without TLS! Use a valid TLS certificate and route to
+    - code [ref=f1e6]: https://
+    - text: .
+  - generic [ref=f1e13]:
+    - link "PostHog" [ref=f1e15] [cursor=pointer]:
+      - /url: https://posthog.com?utm_campaign=in-product&utm_tag=login-header
+      - img [ref=f1e17]
+    - generic [ref=f1e27]:
+      - heading "Log in" [level=2] [ref=f1e28]
+      - generic [ref=f1e71]: Invalid email or password.
+      - generic [ref=f1e29]:
+        - generic [ref=f1e30]:
+          - generic [ref=f1e31]: Email
+          - textbox "Email" [ref=f1e33]:
+            - /placeholder: email@yourcompany.com
+            - text: admin@coxa.io
+        - generic [ref=f1e34]:
+          - generic [ref=f1e36]:
+            - generic [ref=f1e37]: Password
+            - link "Forgot your password?" [ref=f1e38] [cursor=pointer]:
+              - /url: "#"
+          - generic [ref=f1e39]:
+            - textbox "Password Forgot your password?" [ref=f1e40]:
+              - /placeholder: ••••••••••
+              - text: posthog
+            - button "Show password" [ref=f1e41] [cursor=pointer]:
+              - img [ref=f1e44]
+        - button "Log in" [active] [ref=f1e46] [cursor=pointer]:
+          - generic [ref=f1e48]: Log in
+      - separator [ref=f1e49]
+      - generic [ref=f1e50]:
+        - paragraph [ref=f1e51]: Or log in with
+        - button "Passkey" [ref=f1e54] [cursor=pointer]:
+          - img "Passkey" [ref=f1e57]
+  - textbox [ref=f1e58]

@@ -1,0 +1,97 @@
+cubes:
+  - name: Memberships
+    sql_table: coxa.mv_monthly_memberships
+    description: Monthly membership lifecycle aggregates
+
+    dimensions:
+      - name: tenantId
+        sql: tenant_id
+        type: string
+        primary_key: true
+
+      - name: periodMonth
+        sql: toString(period_month)
+        type: string
+
+      - name: planCode
+        sql: plan_code
+        type: string
+
+      - name: action
+        sql: action
+        type: string
+
+    measures:
+      - name: totalCount
+        sql: count
+        type: sum
+        description: Membership events count
+
+      - name: totalRevenueCents
+        sql: revenue_cents
+        type: sum
+        description: Membership revenue
+        format: currency
+
+      - name: newMemberships
+        sql: "CASE WHEN action = 'created' THEN count ELSE 0 END"
+        type: sum
+        description: New membership sign-ups
+
+      - name: churnedMemberships
+        sql: "CASE WHEN action = 'cancelled' THEN count ELSE 0 END"
+        type: sum
+        description: Cancelled memberships
+
+      - name: renewedMemberships
+        sql: "CASE WHEN action = 'renewed' THEN count ELSE 0 END"
+        type: sum
+        description: Renewed memberships
+
+      - name: upgradedMemberships
+        sql: "CASE WHEN action = 'upgraded' THEN count ELSE 0 END"
+        type: sum
+        description: Tier upgrades
+
+      - name: netMemberGrowth
+        sql: |
+          countIf(action = 'created') - countIf(action = 'cancelled')
+        type: number
+        description: New minus churned
+
+  - name: ActiveMemberships
+    sql_table: coxa.fan_360
+    description: Current active membership snapshot
+
+    dimensions:
+      - name: tenantId
+        sql: tenant_id
+        type: string
+        primary_key: true
+
+      - name: planCode
+        sql: membership_plan_code
+        type: string
+
+      - name: tierLevel
+        sql: membership_tier_level
+        type: number
+
+    measures:
+      - name: activeMemberships
+        sql: "CASE WHEN membership_status = 'active' THEN 1 ELSE 0 END"
+        type: sum
+        description: Currently active members
+
+      - name: membershipRevenueCents
+        sql: "0"
+        type: sum
+        description: Placeholder — use Memberships cube for revenue
+
+      - name: membershipArpuCents
+        sql: |
+          toFloat64(sumIf(total_sales_cents, membership_status = 'active')) /
+          nullIf(countIf(membership_status = 'active'), 0)
+        type: number
+        description: Average Revenue Per User
+        format: currency

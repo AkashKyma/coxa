@@ -1,0 +1,13 @@
+[Unit]
+Description=Coxa CDP Services (Phase 1-4)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/coxa-cdp-start.sh
+User=ubuntu
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,100 @@
+version: "3.9"
+
+# ─── Multiwoven Reverse ETL — Phase 4 ────────────────────────────────────────
+# Multiwoven syncs data from ClickHouse back to marketing destinations.
+# Destinations: Email (Brevo/Mailchimp), Push (OneSignal), CRM (HubSpot), WhatsApp.
+#
+# Run with:
+#   docker compose -f docker-compose.multiwoven.yml --env-file .env.cdp up -d
+
+services:
+  multiwoven-db:
+    image: postgres:16-alpine
+    container_name: multiwoven-db
+    environment:
+      POSTGRES_DB: multiwoven
+      POSTGRES_USER: multiwoven
+      POSTGRES_PASSWORD: ${MULTIWOVEN_DB_PASSWORD:-multiwoven_dev_password}
+    volumes:
+      - multiwoven_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U multiwoven -d multiwoven"]
+      interval: 10s
+      retries: 5
+    restart: unless-stopped
+
+  multiwoven-redis:
+    image: redis:7-alpine
+    container_name: multiwoven-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 5
+    restart: unless-stopped
+
+  multiwoven-server:
+    image: multiwoven/multiwoven-server:latest
+    container_name: multiwoven-server
+    depends_on:
+      multiwoven-db:
+        condition: service_healthy
+      multiwoven-redis:
+        condition: service_healthy
+    environment:
+      # Database
+      DB_HOST: multiwoven-db
+      DB_PORT: "5432"
+      DB_NAME: multiwoven
+      DB_USERNAME: multiwoven
+      DB_PASSWORD: ${MULTIWOVEN_DB_PASSWORD:-multiwoven_dev_password}
+      # Redis
+      REDIS_URL: redis://multiwoven-redis:6379
+      # App
+      MULTIWOVEN_RAILS_ENV: production
+      SECRET_KEY_BASE: ${MULTIWOVEN_SECRET_KEY_BASE:-coxa-multiwoven-secret-change-in-prod}
+      APP_REVISION: "1.0"
+    ports:
+      - "3050:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/health || exit 1"]
+      interval: 20s
+      timeout: 15s
+      start_period: 120s
+      retries: 10
+    restart: unless-stopped
+
+  multiwoven-worker:
+    # NOTE: The multiwoven-server image does not include sidekiq.
+    # Multiwoven uses inline ActiveJob processing via the server container.
+    # This worker service is disabled — remove the command override and set
+    # profiles so it never starts unless explicitly needed.
+    image: multiwoven/multiwoven-server:latest
+    container_name: multiwoven-worker
+    profiles: ["disabled"]
+    depends_on:
+      - multiwoven-db
+      - multiwoven-redis
+    environment:
+      DB_HOST: multiwoven-db
+      DB_PORT: "5432"
+      DB_NAME: multiwoven
+      DB_USERNAME: multiwoven
+      DB_PASSWORD: ${MULTIWOVEN_DB_PASSWORD:-multiwoven_dev_password}
+      REDIS_URL: redis://multiwoven-redis:6379
+      MULTIWOVEN_RAILS_ENV: production
+      SECRET_KEY_BASE: ${MULTIWOVEN_SECRET_KEY_BASE:-coxa-multiwoven-secret-change-in-prod}
+    restart: "no"
+
+  multiwoven-ui:
+    image: multiwoven/multiwoven-ui:latest
+    container_name: multiwoven-ui
+    depends_on:
+      - multiwoven-server
+    environment:
+      VITE_API_HOST: http://localhost:3050
+    ports:
+      - "8095:80"
+    restart: unless-stopped
+
+volumes:
+  multiwoven_pgdata:
